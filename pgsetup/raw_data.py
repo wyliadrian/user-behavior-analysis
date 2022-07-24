@@ -7,7 +7,7 @@ import boto3
 
 # %%
 # Set AWS access key and secret key from json file
-f = open('./pgsetup/aws-credentials.json')
+f = open('./pgsetup/aws-key-file.json')
 credentials = json.load(f)
 
 ACCESS_KEY = credentials["users"][0]["access_key"]
