@@ -1,5 +1,5 @@
 #!/bin/bash
-cd /Users/weiyili/Desktop/Projects/user-behavior-analysis/
+cd /Users/weiyili/Desktop/Projects/user-behavior-analysis
 #mkdir data
 #mkdir data/raw
 
