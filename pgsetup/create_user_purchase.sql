@@ -13,4 +13,4 @@ CREATE TABLE retail.user_purchase (
 
 COPY retail.user_purchase(invoice_number, stock_code, detail, quantity, 
                           invoice_date, unit_price, customer_id, country)
-FROM '/var/lib/postgresql/data/user-behavior-analysis/raw/OnlineRetail.csv' DELIMITER ',' CSV HEADER;
+FROM '/var/lib/postgresql/data/raw/OnlineRetail.csv' DELIMITER ',' CSV HEADER;

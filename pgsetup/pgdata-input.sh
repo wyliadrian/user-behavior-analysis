@@ -1,7 +1,9 @@
 #!/bin/bash
-CONTAINER='4741fa41e248'
+#docker ps
+#find postgres container id
+CONTAINER='61f725521aaa'
 SRC_PATH='/Users/weiyili/Desktop/Projects/user-behavior-analysis'
-DEST_PATH='/var/lib/postgresql/data/user-behavior-analysis/raw'
+DEST_PATH='/var/lib/postgresql/data/raw'
 
 docker cp $SRC_PATH/data/raw/. $CONTAINER:$DEST_PATH
 echo "Files have been copied."
