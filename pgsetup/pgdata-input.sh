@@ -1,7 +1,8 @@
 #!/bin/bash
 #docker ps
-#find postgres container id
-CONTAINER='61f725521aaa'
+#find postgres <container id>
+#example: '087bcb8017e7'
+CONTAINER=<container id>
 SRC_PATH='/Users/weiyili/Desktop/Projects/user-behavior-analysis'
 DEST_PATH='/var/lib/postgresql/data/raw'
 
