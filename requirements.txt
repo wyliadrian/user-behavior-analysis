@@ -1,1 +1,5 @@
-boto3
+python:
+    boto3
+airflow:
+  python:
+    gcloud
