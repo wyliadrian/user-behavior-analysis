@@ -4,17 +4,21 @@ from airflow.models import Variable
 from airflow.operators.postgres_operator import PostgresOperator
 from airflow.operators.python_operator import PythonOperator
 from airflow.operators.bash_operator import BashOperator
+from airflow.operators.dummy_operator import DummyOperator
+from airflow.contrib.operators.dataproc_operator import DataProcPySparkOperator
+from airflow.providers.google.cloud.operators.bigquery import BigQueryExecuteQueryOperator
 
 from daglibs import gcp_connection, local_to_gcp_bucket, bigquery_job
 
 #Config
 BUCKET_NAME = Variable.get("BUCKET")
+CLUSTER_NAME = Variable.get("DATAPROC_CLUSTER")
 
 default_args = {
     "owner": "airflow",
     "depends_on_past": True,
     "wait_for_dwonstream": True,
-    "start_date": datetime(2022, 7, 27, 5, 3),
+    "start_date": datetime(2022, 7, 30, 19, 48),
     "email": ["wyliadrian18@gmail.com"],
     "email_on_failure": False,
     "email_on_retry": False,
@@ -56,15 +60,11 @@ user_purchase_data_to_gcs_stage = PythonOperator(
     }
 )
 
-sql_query = "LOAD DATA INTO retail_stage.user_purchase PARTITION BY TIMESTAMP_TRUNC(insertion_date, DAY) FROM FILES (format = 'CSV',skip_leading_rows = 1, uris = ['gs://"+BUCKET_NAME+"/stage/user_purchase/{{  execution_date | ds }}.csv'])"
-
-load_user_purchase_data_to_bq_tbl = PythonOperator(
+load_user_purchase_data_to_bq = BigQueryExecuteQueryOperator(
     dag = dag,
-    task_id = "load_user_purchase_data_to_bq_tbl",
-    python_callable = bigquery_job.run_bigquery_external_query,
-    op_kwargs = {
-        "query": sql_query
-    }
+    task_id = "load_user_purchase_data_to_bq",
+    sql = './daglibs/sql/load_user_purchase_data.sql',
+    use_legacy_sql = False
 )
 
 remove_temp_user_purchase_data = BashOperator(
@@ -73,14 +73,104 @@ remove_temp_user_purchase_data = BashOperator(
     bash_command = "rm /opt/airflow/temp/{{  execution_date | ds }}.csv"
 )
 
-(
-    activate_google_cloud
-    >> extract_user_purchase_data
-    >> user_purchase_data_to_gcs_stage
-    >> load_user_purchase_data_to_bq_tbl
+movie_review_to_gcs_raw = PythonOperator(
+    dag = dag,
+    task_id = "movie_review_to_gcs_raw",
+    python_callable = local_to_gcp_bucket.local_to_bucket,
+    provide_context = True,
+    op_kwargs = {
+        "bucket_name": BUCKET_NAME, 
+        "source_file_name": "/opt/airflow/data/movie_review.csv", 
+        "destination_blob_name": f"raw/movie_review.csv"
+    }
+)
+
+"""
+movie_review_to_gcs_raw = PythonOperator(
+    dag = dag,
+    task_id = "movie_review_to_gcs_raw",
+    python_callable = local_to_gcp_bucket.upload_to_bucket,
+    provide_context = True,
+    op_kwargs = {
+        "bucket_name": BUCKET_NAME, 
+        "folder_name": "raw", 
+        "file_name": "movie_review.csv", 
+        "src_path": "/opt/airflow/data/movie_review.csv"
+    }
+)
+"""
+
+spark_script_to_gcs_raw = PythonOperator(
+    dag = dag,
+    task_id = "spark_script_to_gcs_raw",
+    python_callable = local_to_gcp_bucket.upload_to_bucket,
+    provide_context = True,
+    op_kwargs = {
+        "bucket_name": BUCKET_NAME, 
+        "folder_name": "scripts", 
+        "file_name": "random_text_classification.py", 
+        "src_path": "/opt/airflow/dags/daglibs/random_text_classification.py"
+    }
+)
+
+src_path = f"gs://{BUCKET_NAME}/raw/movie_review.csv"
+dst_path = "gs://uba-bkt/stage/movie_review/{{  execution_date | ds }}.parquet"
+
+movie_review_classification = DataProcPySparkOperator(
+    dag = dag,
+    task_id = "movie_review_classification",
+    main = f"gs://{BUCKET_NAME}/scripts/random_text_classification.py",
+    cluster_name = CLUSTER_NAME,
+    region = "us-central1",
+    arguments = [src_path, dst_path]
+)
+
+load_movie_review_classification_to_bq = BigQueryExecuteQueryOperator(
+    dag = dag,
+    task_id = "load_movie_review_classification_to_bq",
+    sql = "./daglibs/sql/load_classified_movie_review.sql",
+    use_legacy_sql = False
+)
+
+generate_user_behavior_metric = BigQueryExecuteQueryOperator(
+    dag = dag,
+    task_id = "generate_user_behavior_metric",
+    sql = "./daglibs/sql/generate_user_behavior_metric.sql",
+    use_legacy_sql = False
+)
+
+end_of_data_pipeline = DummyOperator(
+    task_id = "end_of_data_pipeline", 
+    dag = dag
 )
 
 (
-    user_purchase_data_to_gcs_stage
-    >> remove_temp_user_purchase_data
+    [
+        activate_google_cloud,
+        extract_user_purchase_data
+    ]
+    >> user_purchase_data_to_gcs_stage
+    >> [
+        load_user_purchase_data_to_bq,
+        remove_temp_user_purchase_data
+        ]
+)
+
+(
+    activate_google_cloud
+    >> [
+        movie_review_to_gcs_raw,
+        spark_script_to_gcs_raw
+        ]
+    >> movie_review_classification
+    >> load_movie_review_classification_to_bq
+)
+
+(
+    [
+        load_user_purchase_data_to_bq,
+        load_movie_review_classification_to_bq,
+    ]
+    >> generate_user_behavior_metric
+    >> end_of_data_pipeline
 )
