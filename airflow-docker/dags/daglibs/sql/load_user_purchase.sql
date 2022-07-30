@@ -1,3 +1,4 @@
+# For Postgres
 CREATE SCHEMA IF NOT EXISTS retail_stage;
 
 CREATE TABLE IF NOT EXISTS retail_stage.user_purchase (
